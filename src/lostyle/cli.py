@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 from .collect import list_styles
 from .copier import StyleNotFoundError, copy_styles
+from .diff import diff_styles
 from .package import OdfError, OdfPackage
 from .rename import AmbiguousStyleError, rename_style
 
@@ -41,6 +42,12 @@ def _cmd_rename(args: argparse.Namespace) -> int:
     result = rename_style(args.document, args.old, args.new, family=args.family, output=args.output)
     print(result)
     return 0
+
+
+def _cmd_diff(args: argparse.Namespace) -> int:
+    diff = diff_styles(args.a, args.b, families=args.family)
+    print(diff.format(args.a, args.b))
+    return 1 if args.exit_code and diff else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +96,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_rename.add_argument("-f", "--family", help="family/kind, if OLD exists in several")
     p_rename.add_argument("-o", "--output", help="write result here instead of modifying DOCUMENT")
     p_rename.set_defaults(func=_cmd_rename)
+
+    p_diff = sub.add_parser("diff", help="compare the style names of two documents")
+    p_diff.add_argument("a")
+    p_diff.add_argument("b")
+    p_diff.add_argument(
+        "-f", "--family", action="append", help="only this family/kind (repeatable)"
+    )
+    p_diff.add_argument(
+        "--exit-code", action="store_true", help="exit with 1 if the documents differ"
+    )
+    p_diff.set_defaults(func=_cmd_diff)
     return parser
 
 

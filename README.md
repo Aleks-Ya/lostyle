@@ -65,10 +65,27 @@ lostyle list template.odg -f graphic
 lostyle copy template.odg drawing.odg -s "Fancy Box"
 lostyle copy template.odg drawing.odg -f master-page --on-conflict rename -o out.odg
 lostyle rename drawing.odg "Fancy Box" "Corporate Box" [-f graphic] [-o out.odg]
+lostyle diff template.odg drawing.odg [-f graphic] [--exit-code]
 ```
 
 Options of `copy`: `-f/--family` and `-s/--style` (repeatable), `-o/--output`,
 `--on-conflict overwrite|skip|rename`, `--no-deps`, `--defaults`.
+
+### Comparing styles
+
+`lostyle diff A B` lists, grouped by family/kind, the styles that exist only in
+A (`-`) or only in B (`+`), and counts those in both. Styles are matched by kind
+and internal name; their contents are not compared, and automatic styles are
+ignored. With `--exit-code` it exits with 1 when the documents differ.
+
+```
+--- template.odg
++++ drawing.odg
+graphic
+  - Fancy_20_Box  (Fancy Box)
+  + Corporate_20_Box  (Corporate Box)
+1 only in template.odg, 1 only in drawing.odg, 36 in both
+```
 
 Note: LibreOffice stores styles under an encoded form of their display name
 (`Fancy Box` → `Fancy_20_Box`); both forms are accepted.

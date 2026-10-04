@@ -2,6 +2,7 @@
 
 from .collect import MissingRef, StyleEntry, StyleIndex, list_styles
 from .copier import CopyReport, OnConflict, StyleNotFoundError, copy_all_styles, copy_styles
+from .diff import StyleDiff, diff_styles
 from .package import OdfError, OdfPackage
 from .refs import StyleRef
 from .rename import AmbiguousStyleError, RenameResult, StyleNameConflictError, rename_style
@@ -14,6 +15,7 @@ __all__ = [
     "OdfPackage",
     "OnConflict",
     "RenameResult",
+    "StyleDiff",
     "StyleEntry",
     "StyleIndex",
     "StyleNameConflictError",
@@ -21,6 +23,7 @@ __all__ = [
     "StyleRef",
     "copy_all_styles",
     "copy_styles",
+    "diff_styles",
     "list_styles",
     "rename_style",
 ]
