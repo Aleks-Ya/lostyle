@@ -236,6 +236,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "lxml" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 
 [package.dev-dependencies]
@@ -247,7 +248,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "lxml", specifier = ">=5.0" }]
+requires-dist = [
+    { name = "lxml", specifier = ">=5.0" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=1.1" },
+]
 
 [package.metadata.requires-dev]
 dev = [

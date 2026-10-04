@@ -21,6 +21,7 @@ NSDECL = (
 
 MIMETYPES = {
     "graphics": "application/vnd.oasis.opendocument.graphics",
+    "graphics-template": "application/vnd.oasis.opendocument.graphics-template",
     "text": "application/vnd.oasis.opendocument.text",
     "spreadsheet": "application/vnd.oasis.opendocument.spreadsheet",
     "presentation": "application/vnd.oasis.opendocument.presentation",

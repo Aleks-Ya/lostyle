@@ -206,6 +206,23 @@ def test_master_page_copies_layout_and_renames_clashing_automatic_styles(tmp_pat
     assert not report.unresolved
 
 
+def test_copying_again_changes_nothing(tmp_path: Path) -> None:
+    src = make_src(tmp_path / "src.odg")
+    dst = make_dst(tmp_path / "dst.odg")
+    copy_all_styles(src, dst)
+    before = dst.read_bytes()
+    report = copy_all_styles(src, dst)
+    # identical styles are not rewritten, and the master page's automatic styles
+    # (renamed to PM0_1, Mdp1_1, gr1_1 the first time) are reused instead of copied again
+    assert not report.copied
+    assert not report.overwritten
+    assert not report.renamed
+    assert StyleRef("graphic", "Fancy") in report.unchanged
+    assert StyleRef("page-layout", "PM0", automatic=True) in report.skipped
+    assert dst.read_bytes() == before
+    assert "unchanged (identical in target)" in report.summary()
+
+
 # ---------------------------------------------------------------- embedded files
 def test_fill_image_copies_picture_and_manifest_entry(tmp_path: Path) -> None:
     src = make_src(tmp_path / "src.odg")

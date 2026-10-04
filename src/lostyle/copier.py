@@ -41,6 +41,7 @@ class StyleNotFoundError(LookupError):
 class CopyReport:
     copied: list[StyleRef] = field(default_factory=list)
     overwritten: list[StyleRef] = field(default_factory=list)
+    unchanged: list[StyleRef] = field(default_factory=list)  # overwrite with identical content
     skipped: list[StyleRef] = field(default_factory=list)
     renamed: dict[StyleRef, str] = field(default_factory=dict)
     files: list[str] = field(default_factory=list)
@@ -52,6 +53,7 @@ class CopyReport:
         for title, refs in (
             ("copied", self.copied),
             ("overwritten", self.overwritten),
+            ("unchanged (identical in target)", self.unchanged),
             ("skipped (already in target)", self.skipped),
         ):
             if refs:
@@ -78,6 +80,20 @@ def _container_for(ref: StyleRef) -> str:
     if ref.automatic:
         return "office:automatic-styles"
     return "office:styles"
+
+
+def same_element(a: etree._Element, b: etree._Element, ignore_attrs: Iterable[str] = ()) -> bool:
+    """Whether two elements have the same tag, attributes, text and children."""
+    ignored = set(ignore_attrs)
+    if a.tag != b.tag or (a.text or "") != (b.text or ""):
+        return False
+    attrs_a = {k: v for k, v in a.attrib.items() if k not in ignored}
+    attrs_b = {k: v for k, v in b.attrib.items() if k not in ignored}
+    if attrs_a != attrs_b or len(a) != len(b):
+        return False
+    return all(
+        (x.tail or "") == (y.tail or "") and same_element(x, y) for x, y in zip(a, b, strict=True)
+    )
 
 
 def _as_package(doc: Source) -> OdfPackage:
@@ -162,6 +178,11 @@ class _Copier:
 
     def plan_names(self, order: list[StyleRef]) -> None:
         for ref in order:
+            if ref.automatic and (same := self._identical_automatic(ref)) is not None:
+                # reuse it: copying the same master page again must not pile up copies
+                self.actions[ref] = "skip"
+                self.final_names[ref] = same
+                continue
             if self.action(ref) != "rename":
                 self.final_names[ref] = ref.name
                 continue
@@ -170,6 +191,18 @@ class _Copier:
             taken.add(new_name)
             self.final_names[ref] = new_name
             self.report.renamed[ref] = new_name
+
+    def _identical_automatic(self, ref: StyleRef) -> str | None:
+        """Name of a target automatic style identical to ``ref`` (apart from its name), if any."""
+        el = copy.deepcopy(self.src_index[ref].element)
+        self._rewrite_refs(ref, el)
+        ignore = {name_attr(el)}
+        automatic = [e for e in self.dst_index.styles([ref.kind], True) if e.ref.automatic]
+        candidates = sorted(automatic, key=lambda e: e.ref.name != ref.name)  # same name first
+        for entry in candidates:
+            if same_element(el, entry.element, ignore):
+                return entry.ref.name
+        return None
 
     # ------------------------------------------------------------- copying
     def copy(self, ref: StyleRef) -> StyleRef | None:
@@ -194,6 +227,9 @@ class _Copier:
         container = self.dst.container(_container_for(ref), create=True)
         assert container is not None
         existing = self.dst_index.get(ref) if action == "overwrite" else None
+        if existing is not None and same_element(el, existing.element):
+            self.report.unchanged.append(ref)
+            return None
         if existing is not None:
             parent = existing.element.getparent()
             assert parent is not None

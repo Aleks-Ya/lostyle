@@ -85,6 +85,19 @@ class OdfPackage:
             self._trees[name] = etree.fromstring(self._entries[name][1], _parser())
         return self._trees[name]
 
+    @property
+    def mimetype(self) -> str:
+        """The document's media type, e.g. ``application/vnd.oasis.opendocument.graphics``."""
+        if self._flat_root is not None:
+            return self._flat_root.get(q("office:mimetype")) or ""
+        if "mimetype" in self._entries:
+            return self._entries["mimetype"][1].decode("ascii", "replace").strip()
+        if MANIFEST_XML in self._entries:
+            for entry in self._part(MANIFEST_XML).iter(q("manifest:file-entry")):
+                if entry.get(q("manifest:full-path")) == "/":
+                    return entry.get(q("manifest:media-type")) or ""
+        return ""
+
     # ------------------------------------------------------------------ XML roots
     @property
     def styles_root(self) -> etree._Element:
@@ -134,6 +147,10 @@ class OdfPackage:
     def has_file(self, name: str) -> bool:
         return not self.flat and name in self._entries
 
+    def file_names(self) -> list[str]:
+        """Names of all entries of a zipped package (empty for flat documents)."""
+        return [] if self.flat else list(self._entries)
+
     def read_file(self, name: str) -> bytes:
         if self.flat or name not in self._entries:
             raise OdfError(f"no embedded file {name}")
@@ -158,6 +175,20 @@ class OdfPackage:
         entry = etree.SubElement(manifest, q("manifest:file-entry"))
         entry.set(q("manifest:full-path"), name)
         entry.set(q("manifest:media-type"), media_type)
+        self._modified.add(MANIFEST_XML)
+
+    def remove_file(self, name: str) -> None:
+        if self.flat or name not in self._entries:
+            raise OdfError(f"no embedded file {name}")
+        del self._entries[name]
+        if MANIFEST_XML not in self._entries:
+            return
+        manifest = self._part(MANIFEST_XML)
+        for entry in list(manifest.iter(q("manifest:file-entry"))):
+            if entry.get(q("manifest:full-path")) == name:
+                parent = entry.getparent()
+                if parent is not None:
+                    parent.remove(entry)
         self._modified.add(MANIFEST_XML)
 
     # ------------------------------------------------------------------ saving

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "Aleksey Yablokov", email = "alex_ya@mailbox.org" }]
-dependencies = ["lxml>=5.0"]
+dependencies = ["lxml>=5.0", "tomli>=1.1; python_version < '3.11'"]
 
 [project.scripts]
 lostyle = "lostyle.cli:main"

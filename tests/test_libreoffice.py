@@ -11,7 +11,15 @@ import pytest
 from helpers import make_odf
 from test_copier import SRC_AUTO, SRC_FONTS, SRC_MASTERS, SRC_STYLES, attr, find, one, styles_root
 
-from lostyle import OdfPackage, StyleRef, copy_styles, rename_style, replace_style
+from lostyle import (
+    OdfPackage,
+    StyleRef,
+    copy_styles,
+    parse_mapping,
+    rename_style,
+    replace_style,
+    sync_documents,
+)
 from lostyle.ns import NS, encode_style_name
 
 SOFFICE = shutil.which("soffice") or shutil.which("libreoffice")
@@ -237,3 +245,71 @@ def test_replace_roundtrip(tmp_path: Path, convert) -> None:  # type: ignore[no-
         if style != "Box":  # LO keeps per-shape formatting in an automatic style
             auto = one(root, f"//office:automatic-styles/style:style[@style:name='{style}']")
             assert attr(auto, "style:parent-style-name") == "Box"
+
+
+def test_sync_roundtrip(tmp_path: Path, convert) -> None:  # type: ignore[no-untyped-def]
+    flat_dir = tmp_path / "flat"
+    flat_dir.mkdir()
+    line = '<draw:line draw:style-name="{}" svg:x1="1cm" svg:y1="1cm" svg:x2="5cm" svg:y2="1cm"/>'
+    template_styles = """
+<style:style style:name="standard" style:family="graphic"/>
+<style:style style:name="Line_3a__20_Association" style:display-name="Line: Association" style:family="graphic" style:parent-style-name="standard">
+  <style:graphic-properties svg:stroke-color="#3465a4" svg:stroke-width="0.1cm"/></style:style>
+"""
+    master = (
+        '<style:master-page style:name="Main" style:page-layout-name="PM0" draw:style-name="Mdp1">'
+        '<draw:rect draw:style-name="gr1" svg:x="0cm" svg:y="0cm" svg:width="1cm" svg:height="1cm"/>'
+        "</style:master-page>"
+    )
+    auto = (
+        '<style:page-layout style:name="PM0"><style:page-layout-properties fo:page-width="{}" '
+        'fo:page-height="20cm"/></style:page-layout>'
+        '<style:style style:name="Mdp1" style:family="drawing-page"/>'
+        '<style:style style:name="gr1" style:family="graphic" style:parent-style-name="standard">'
+        '<style:graphic-properties draw:fill-color="{}"/></style:style>'
+    )
+    template_flat = make_odf(
+        flat_dir / "template.fodg", styles=template_styles, masters=master,
+        auto_styles=auto.format("30cm", "#ff0000"),
+        body=f'<office:drawing><draw:page draw:name="p" draw:master-page-name="Main">'
+        f'{line.format("Line_3a__20_Association")}</draw:page></office:drawing>',
+        flat=True,
+    )  # fmt: skip
+    doc_flat = make_odf(
+        flat_dir / "doc.fodg", masters=master, auto_styles=auto.format("21cm", "#00ff00"),
+        styles='<style:style style:name="standard" style:family="graphic"/>'
+        '<style:style style:name="Old_20_line" style:display-name="Old line" style:family="graphic"/>'
+        '<style:style style:name="Leftover" style:family="graphic"/>',
+        body=f'<office:drawing><draw:page draw:name="p" draw:master-page-name="Main">'
+        f'{line.format("Old_20_line")}</draw:page></office:drawing>',
+        flat=True,
+    )  # fmt: skip
+    template = convert(template_flat, "otg", tmp_path)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    doc = convert(doc_flat, "odg", docs)
+
+    mapping = parse_mapping({"graphic": {"Line: Association": ["Old line"]}})
+    [result] = sync_documents(template, [docs], mapping=mapping, purge=True)
+    assert result.error is None
+    assert result.changed
+    assert not sync_documents(template, [docs], mapping=mapping, purge=True)[0].changed
+
+    check_dir = tmp_path / "check"
+    check_dir.mkdir()
+    convert(doc, "pdf", check_dir)
+    root = styles_root(convert(doc, "fodg", check_dir))
+    names = {attr(e, "style:name") for e in find(root, "//office:styles/style:style")}
+    assert "Line_3a__20_Association" in names
+    assert not names & {"Old_20_line", "Leftover"}
+    style = attr(one(root, "//draw:page/draw:line"), "draw:style-name")
+    if style != "Line_3a__20_Association":  # LO may wrap it in an automatic style
+        auto_style = one(root, f"//office:automatic-styles/style:style[@style:name='{style}']")
+        assert attr(auto_style, "style:parent-style-name") == "Line_3a__20_Association"
+    master_el = one(root, "//style:master-page[@style:name='Main']")
+    layout = attr(master_el, "style:page-layout-name")
+    props = one(root, f"//style:page-layout[@style:name='{layout}']/style:page-layout-properties")
+    assert attr(props, "fo:page-width") == "30cm"
+    rect_style = attr(one(master_el, "draw:rect"), "draw:style-name")
+    fill = one(root, f"//style:style[@style:name='{rect_style}']/style:graphic-properties")
+    assert attr(fill, "draw:fill-color") == "#ff0000"

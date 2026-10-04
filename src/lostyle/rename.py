@@ -69,17 +69,22 @@ def _automatic_names(container: etree._Element | None) -> set[tuple[str, str]]:
     }
 
 
-def _matching_refs(
-    pkg: OdfPackage, index: StyleIndex, ref: StyleRef
-) -> Iterator[tuple[Reference, bool]]:
-    """Yield ``(reference, in_content_part)`` for every reference that resolves to ``ref``."""
+def _resolved_refs(
+    pkg: OdfPackage, index: StyleIndex
+) -> Iterator[tuple[Reference, StyleRef | None, StyleRef | None, bool]]:
+    """Yield ``(reference, target, referrer, in_content_part)`` for every style reference.
+
+    ``target`` is the style the reference resolves to (``None`` if it doesn't exist).
+    ``referrer`` is the styles-part style containing the reference, or ``None`` for
+    references from the content part (body, content.xml automatic styles) and from
+    other elements such as Writer's notes configuration.
+    """
 
     def scan(
-        el: etree._Element, resolve: Resolver, in_content: bool
-    ) -> Iterator[tuple[Reference, bool]]:
+        el: etree._Element, resolve: Resolver, referrer: StyleRef | None, in_content: bool
+    ) -> Iterator[tuple[Reference, StyleRef | None, StyleRef | None, bool]]:
         for r in iter_refs(el, element_kind(el) or ""):
-            if r.value == ref.name and ref.kind in r.kinds and resolve(r.kinds, r.value) == ref:
-                yield r, in_content
+            yield r, resolve(r.kinds, r.value), referrer, in_content
 
     styles_root = pkg.styles_root
     content_root = pkg.content_root
@@ -90,7 +95,8 @@ def _matching_refs(
         container = styles_root.find(q(name))
         if container is None:
             continue
-        prefer_auto = name in ("office:automatic-styles", "office:master-styles")
+        automatic = name == "office:automatic-styles"
+        prefer_auto = automatic or name == "office:master-styles"
 
         def resolve_styles(
             kinds: tuple[str, ...], value: str, p: bool = prefer_auto
@@ -98,7 +104,9 @@ def _matching_refs(
             return index.resolve(kinds, value, p)
 
         for child in container.iterchildren(tag=etree.Element):
-            yield from scan(child, resolve_styles, flat)
+            kind, child_name = element_kind(child), element_name(child)
+            referrer = StyleRef(kind, child_name, automatic) if kind and child_name else None
+            yield from scan(child, resolve_styles, referrer, flat)
 
     if content_root is None:
         return
@@ -116,10 +124,19 @@ def _matching_refs(
 
     if not flat and content_auto_container is not None:
         for child in content_auto_container.iterchildren(tag=etree.Element):
-            yield from scan(child, resolve_content, True)
+            yield from scan(child, resolve_content, None, True)
     body = content_root.find(q("office:body"))
     if body is not None:
-        yield from scan(body, resolve_content, True)
+        yield from scan(body, resolve_content, None, True)
+
+
+def _matching_refs(
+    pkg: OdfPackage, index: StyleIndex, ref: StyleRef
+) -> Iterator[tuple[Reference, bool]]:
+    """Yield ``(reference, in_content_part)`` for every reference that resolves to ``ref``."""
+    for r, target, _, in_content in _resolved_refs(pkg, index):
+        if target == ref:
+            yield r, in_content
 
 
 def _find_one(index: StyleIndex, name: str, family: str | None) -> StyleRef:

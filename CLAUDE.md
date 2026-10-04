@@ -10,7 +10,7 @@ uv run pytest                             # all tests
 uv run pytest tests/test_copier.py::test_rename_copies_under_new_names   # single test
 uv run ruff check . && uv run ruff format .
 uv run mypy                               # strict, src/ only
-uv run lostyle --help                     # CLI (list / copy / rename / replace / diff)
+uv run lostyle --help                     # CLI (list / copy / rename / replace / diff / map / purge / audit / sync)
 ```
 
 `tests/test_libreoffice.py` runs real LibreOffice (`soffice --headless --convert-to`) with an isolated profile and is skipped when `soffice` is absent. Tests import helpers as top-level modules (`from helpers import make_odf`), relying on pytest's default rootdir/prepend import mode — there is no `conftest.py` or `tests/__init__.py`.
@@ -27,9 +27,26 @@ uv run lostyle --help                     # CLI (list / copy / rename / replace 
   - Existing font-faces are always kept; `rename` on default styles degrades to skip.
   - With `skip`, a skipped style's dependencies are not traversed.
   - After copying, the target is re-indexed and dangling references are reported in `CopyReport.unresolved` (not raised).
+  - Copying must stay idempotent, because `sync` relies on it: an overwrite with identical content is recorded as `unchanged` and not rewritten (`same_element`). An automatic style identical to one the target already has, apart from its name, reuses that one instead of being copied again as `gr1_1`, `gr1_2`, ….
   - A target passed as a path is saved in place; one passed as `OdfPackage` is left unsaved unless `output` is given.
 - `rename.py` — `rename_style` renames one non-automatic style in place. It scans every style container of styles.xml plus content.xml's automatic styles and `office:body` with `iter_refs`, and rewrites only references that *resolve* to the renamed style (content.xml automatic styles shadow common styles of the same name). All conflict checks run and all matches are collected before anything is modified. Renaming a master page also renames the `<master>-*` presentation styles: LibreOffice links them by name prefix and otherwise silently replaces them with defaults (verified by LO round-trip). `encode_style_name` (`ns.py`) reproduces LO's encoding: every `_` and `:` and any non-XML-name character becomes `_<hex>_`.
 - `replace.py` — `replace_style` repoints references from one or more styles to a replacement (reusing `rename._matching_refs`, `_find_one`, `_linked_presentation_styles`) and deletes the old ones. `_parent_fixes` prevents inheritance cycles when a replaced style is an ancestor of the replacement; font replacement also swaps content.xml's separate font-face declarations.
+- `rename._resolved_refs` is the single scan of every reference in a document, yielding the resolved target and the referring style (`None` = content part or a non-style element). `_matching_refs` (rename/replace) and `usage.py` both build on it.
+- `usage.py`:
+  - `style_usage` counts references.
+  - `unused_styles` / `purge_unused` delete what isn't reachable (`resolve_closure`) from:
+    - content-part references;
+    - `keep`;
+    - the default, outline and presentation-page-layout kinds;
+    - the `<master>-*` presentation styles of reached masters;
+    - any non-automatic style whose name appears in a `*name(s)` attribute outside style definitions. This is a deliberate safety net for references the table doesn't model.
+  - Embedded pictures used only by deleted styles are removed (`OdfPackage.remove_file`).
+- `mapping.py` — a TOML mapping, `{kind: {new: [olds]}}`, applied with `replace_style` when `new` exists, else with `rename_style`. Old names a document lacks are skipped.
+- `sync.py`:
+  - `sync_documents` runs, per document: `copy_all_styles` from the template, then `apply_mapping` (after the copy, so the targets exist), then `purge_unused(keep=template, automatic_only=not purge)`. It saves only when `SyncResult.changed`.
+  - `audit_documents` runs the same steps in memory and reports reachable non-template styles.
+  - Documents are matched to the template by mimetype without `-template`.
+  - Batch errors (`BATCH_ERRORS`) are recorded per document, and the batch continues.
 - `diff.py` — `diff_styles` compares two documents' non-automatic styles by `(kind, internal name)` only (no content comparison, by design); `StyleDiff.format` renders the CLI text.
 
 LibreOffice rewrites internal style names to an encoded display name on save (`Fancy Box` → `Fancy_20_Box`, decoded by `ns.decode_style_name`); `StyleIndex.find` matches internal, display and decoded names, so tests against LO-generated files should select styles by display name. When asserting LO round-trips, avoid marker properties LO overrides (e.g. `fo:color` is ignored when `style:use-window-font-color="true"`).

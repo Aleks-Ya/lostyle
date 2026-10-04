@@ -67,7 +67,16 @@ lostyle copy template.odg drawing.odg -f master-page --on-conflict rename -o out
 lostyle rename drawing.odg "Fancy Box" "Corporate Box" [-f graphic] [-o out.odg]
 lostyle replace drawing.odg "Box 2" "Box copy" --with Box [--keep] [-o out.odg]
 lostyle diff template.odg drawing.odg [-f graphic] [--exit-code]
+lostyle list drawing.odg --usage | --unused
+lostyle purge drawing.odg [--keep template.otg] [-f gradient] [-o out.odg]
+lostyle map DIAGRAMS/ --map styles.toml
+lostyle audit template.otg DIAGRAMS/ [--map styles.toml] [-v] [--exit-code]
+lostyle sync template.otg DIAGRAMS/ [--map styles.toml] [--purge] [--dry-run] [-v]
 ```
+
+`map`, `purge`, `audit` and `sync` accept several documents and directories
+(searched recursively); an error in one document is reported and the others are
+still processed.
 
 Options of `copy`: `-f/--family` and `-s/--style` (repeatable), `-o/--output`,
 `--on-conflict overwrite|skip|rename`, `--no-deps`, `--defaults`.
@@ -87,6 +96,63 @@ replacement, the inheritance chain is re-linked so no style inherits from
 itself. Fonts can be replaced too (`replace_style(doc, "Arial", "Liberation Sans")`).
 Replacing an Impress master page also switches its `<master>-*` presentation
 styles to the replacement master's ones.
+
+### Keeping many documents in line with a template
+
+Edit the styles in one template, then push them into every document:
+
+```
+lostyle sync templates/Schematization.otg Diagrams/ --map styles.toml --purge --dry-run
+lostyle sync templates/Schematization.otg Diagrams/ --map styles.toml --purge
+```
+
+For each document of the template's type (a spreadsheet among drawings is
+skipped), `sync`:
+
+1. copies all of the template's styles over the document's;
+2. moves old style names to the template's names, as listed in the mapping file;
+3. deletes the automatic styles a replaced master page left behind, and with
+   `--purge` every unused style that is not in the template. Template styles stay,
+   even when they are unused, so they're available in the document.
+
+It saves only documents that changed. Running it again on synced documents
+changes nothing.
+
+The mapping file (TOML) records once, for all documents, the old names of each
+template style:
+
+```toml
+[graphic]
+"Line: Association" = ["Line: Assosiation", "Assosiation line"]
+"Page: part splitter" = "Page part splitter"
+
+[master-page]
+SchematizationTemplate = ["SchematizationTemplate_2"]
+```
+
+Each old style a document has is merged into the new one (`replace_style`). When
+the new one doesn't exist yet, the first old style is renamed instead. Old names
+a document doesn't have are ignored.
+
+`audit` shows what is still missing from the mapping file: the styles documents
+would still use after a sync that the template doesn't have, with how many
+documents use each. Fill in the mapping until `audit` reports nothing.
+
+```
+$ lostyle audit templates/Schematization.otg Diagrams/ --map styles.toml
+graphic
+    74  Line: Assosiation
+    62  Slide title
+2 style(s) used in 80 of 232 document(s) are not in the template
+```
+
+The same is available from Python: `sync_documents`, `audit_documents`,
+`load_mapping` / `apply_mapping`, `purge_unused` / `unused_styles` and
+`style_usage`.
+
+A style counts as used when the drawing, text or sheets use it, or a used master
+page or another used style does. `list --usage` shows the number of references
+each style has, and `list --unused` shows what `purge` would delete.
 
 ### Comparing styles
 
