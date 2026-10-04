@@ -15,6 +15,42 @@ uv run lostyle --help                     # CLI (list / copy / rename / replace 
 
 `tests/test_libreoffice.py` runs real LibreOffice (`soffice --headless --convert-to`) with an isolated profile and is skipped when `soffice` is absent. Tests import helpers as top-level modules (`from helpers import make_odf`), relying on pytest's default rootdir/prepend import mode — there is no `conftest.py` or `tests/__init__.py`.
 
+## Python API
+
+Everything public is exported from `lostyle/__init__.py`. The README documents only the CLI, which is a thin layer over these functions (`cli.py`).
+
+```python
+from lostyle import (copy_styles, copy_all_styles, list_styles, OdfPackage, rename_style,
+                     replace_style, diff_styles, style_usage, unused_styles, purge_unused,
+                     load_mapping, apply_mapping, sync_documents, audit_documents)
+
+report = copy_styles("template.odg", "drawing.odg", names=["Fancy Box"],
+                     families=["graphic", "master-page"], on_conflict="skip",  # overwrite|skip|rename
+                     include_dependencies=True, include_defaults=False, output="out.odg")
+print(report.summary())            # CopyReport: copied/overwritten/unchanged/skipped/renamed/files/unresolved
+copy_all_styles("template.odt", "letter.odt")         # everything, including default styles
+list_styles(OdfPackage.open("t.odg"), ["graphic"])    # [StyleEntry(ref, element)], .display_name
+
+rename_style("drawing.odg", "Fancy Box", "Corporate Box", family=None)   # -> RenameResult
+replace_style("drawing.odg", ["Box 2", "Box copy"], "Box", keep=False)    # -> ReplaceResult
+diff_styles("a.odg", "b.odg", families=None).format("a.odg", "b.odg")     # StyleDiff
+
+style_usage("d.odg")                                   # {StyleRef: reference count}
+unused_styles("d.odg", keep="template.otg")            # what purge_unused would delete
+purge_unused("d.odg", keep="template.otg", families=None, automatic_only=False)  # -> PurgeResult
+
+mapping = load_mapping("styles.toml")                  # or parse_mapping({kind: {new: [olds]}})
+apply_mapping("d.odg", mapping)                        # -> MappingResult(changes, warnings)
+sync_documents("template.otg", ["Diagrams/"], mapping=mapping, purge=True, dry_run=False,
+               on_result=print)                        # -> [SyncResult]
+audit_documents("template.otg", ["Diagrams/"], mapping=mapping).format(verbose=True)
+```
+
+Conventions shared by all operations:
+- A document can be a path or an open `OdfPackage`. A path is saved in place (only when something changed), unless `output=` is given. An `OdfPackage` is left unsaved unless `output=` is given; `sync`/`audit` use this to run several steps in memory.
+- Names are matched as internal, display or decoded name. `family=` is needed only when a name is ambiguous (`AmbiguousStyleError`).
+- Errors (`StyleNotFoundError`, `StyleNameConflictError`, `ValueError`) are raised before anything is modified.
+
 ## Architecture
 
 `lostyle` copies styles between OpenDocument files by editing the ODF XML directly (zipfile + lxml only; no UNO, and odfdo was deliberately not used). Pipeline for copying: **package → index → closure → copy**; renaming reuses the index and reference table.

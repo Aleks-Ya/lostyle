@@ -1,125 +1,165 @@
 # lostyle
 
-Copy styles from one LibreOffice / OpenDocument file into another — Draw (`.odg`),
-Writer (`.odt`), Calc (`.ods`), Impress (`.odp`) and their flat XML variants
-(`.fodg`, …). Works directly on the ODF XML (only depends on `lxml`); LibreOffice
-does not need to be installed or running.
+Manage the styles of LibreOffice / OpenDocument files from the command line. It
+supports Draw (`.odg`), Writer (`.odt`), Calc (`.ods`), Impress (`.odp`), their
+templates (`.otg`, …) and their flat XML variants (`.fodg`, …). It works directly
+on the ODF XML and only depends on `lxml`; LibreOffice doesn't need to be
+installed or running.
 
-Copied styles bring their dependencies along: parent and next styles, gradients,
-hatches, markers (arrowheads), dash patterns, fill images (embedded pictures),
-font declarations, number formats, list styles, page layouts and master-page
-backgrounds. The target's own automatic styles are never overwritten.
+What it does:
 
-## Python API
+- copies styles from one document into another;
+- renames a style;
+- merges duplicate styles into one;
+- compares the styles of two documents;
+- finds and deletes unused styles;
+- keeps a whole folder of documents in line with a template.
 
-```python
-from lostyle import copy_styles, copy_all_styles, list_styles, OdfPackage
-
-# one style (by internal or display name) plus everything it needs
-report = copy_styles("template.odg", "drawing.odg", names=["Fancy Box"])
-
-# all graphic styles and master pages, keep existing ones, write to a new file
-report = copy_styles(
-    "template.odg",
-    "drawing.odg",
-    families=["graphic", "master-page"],
-    on_conflict="skip",  # "overwrite" (default) | "skip" | "rename"
-    output="drawing-styled.odg",
-)
-print(report.summary())
-
-# everything, including default styles
-copy_all_styles("template.odt", "letter.odt")
-
-for entry in list_styles(OdfPackage.open("template.odg"), ["graphic"]):
-    print(entry.ref.name, entry.display_name)
-```
-
-### Renaming a style
-
-```python
-from lostyle import rename_style
-
-result = rename_style("drawing.odg", "Fancy Box", "Corporate Box")
-print(result)  # graphic:Fancy_20_Box -> Corporate_20_Box (Corporate Box), 3 reference(s) updated
-```
-
-Every reference is updated: parent/next styles, master pages, and shapes,
-paragraphs and cells in the document body. The new name is stored the way
-LibreOffice stores it (display name `Corporate Box`, internal name
-`Corporate_20_Box`). Pass `family=` when the name exists in several families.
-If another style already uses the new name, `StyleNameConflictError` is raised
-and nothing is changed. Renaming an Impress master page also renames its
-`<master>-title`, `<master>-outline1`, … presentation styles, which LibreOffice
-links to the master page by name.
-
-Families/kinds: `graphic`, `paragraph`, `text`, `list`, `table`, `table-cell`,
-`table-column`, `table-row`, `drawing-page`, `presentation`, `number`,
-`master-page`, `page-layout`, `gradient`, `hatch`, `marker`, `stroke-dash`,
-`fill-image`, `opacity`, `font-face`, `default`, ….
-
-## CLI
+## Installation
 
 ```
-lostyle list template.odg -f graphic
+uv tool install .        # or: pip install .
+lostyle --help
+```
+
+## Commands
+
+```
+lostyle list    DOC [-f FAMILY] [--automatic] [--usage | --unused]
+lostyle copy    SOURCE TARGET [-s STYLE] [-f FAMILY] [--on-conflict overwrite|skip|rename]
+                [--no-deps] [--defaults] [-o OUT]
+lostyle rename  DOC OLD NEW [-f FAMILY] [-o OUT]
+lostyle replace DOC OLD [OLD ...] --with NEW [-f FAMILY] [--keep] [-o OUT]
+lostyle diff    A B [-f FAMILY] [--exit-code]
+lostyle purge   PATH... [--keep TEMPLATE] [-f FAMILY] [-o OUT]
+lostyle map     PATH... --map styles.toml [-o OUT]
+lostyle audit   TEMPLATE PATH... [--map styles.toml] [-v] [--exit-code]
+lostyle sync    TEMPLATE PATH... [--map styles.toml] [--purge] [--dry-run] [-v]
+```
+
+- **Style names.** Styles can be named by their display name (`Fancy Box`) or by
+  the encoded internal name LibreOffice stores (`Fancy_20_Box`).
+- **Families.** `-f` takes a family or kind: `graphic`, `paragraph`, `text`,
+  `list`, `table`, `table-cell`, `table-column`, `table-row`, `drawing-page`,
+  `presentation`, `number`, `master-page`, `page-layout`, `gradient`, `hatch`,
+  `marker`, `stroke-dash`, `fill-image`, `opacity`, `font-face`, `default`, ….
+  It is repeatable where the synopsis allows several.
+- **Where results are written.** Commands that change a document save it in
+  place unless `-o` is given.
+- **Several documents.** `purge`, `map`, `audit` and `sync` accept several
+  documents and directories, which are searched recursively. An error in one
+  document is reported and the others are still processed; the exit code is 1 if
+  any failed.
+
+### list
+
+Lists a document's styles with their display names:
+
+- `--automatic` includes automatic styles;
+- `--usage` shows how many references each style has;
+- `--unused` shows only what `purge` would delete.
+
+### copy
+
+```
 lostyle copy template.odg drawing.odg -s "Fancy Box"
 lostyle copy template.odg drawing.odg -f master-page --on-conflict rename -o out.odg
-lostyle rename drawing.odg "Fancy Box" "Corporate Box" [-f graphic] [-o out.odg]
-lostyle replace drawing.odg "Box 2" "Box copy" --with Box [--keep] [-o out.odg]
-lostyle diff template.odg drawing.odg [-f graphic] [--exit-code]
-lostyle list drawing.odg --usage | --unused
-lostyle purge drawing.odg [--keep template.otg] [-f gradient] [-o out.odg]
-lostyle map DIAGRAMS/ --map styles.toml
-lostyle audit template.otg DIAGRAMS/ [--map styles.toml] [-v] [--exit-code]
-lostyle sync template.otg DIAGRAMS/ [--map styles.toml] [--purge] [--dry-run] [-v]
 ```
 
-`map`, `purge`, `audit` and `sync` accept several documents and directories
-(searched recursively); an error in one document is reported and the others are
-still processed.
+Copies the selected styles, or all of them, together with what they depend on:
 
-Options of `copy`: `-f/--family` and `-s/--style` (repeatable), `-o/--output`,
-`--on-conflict overwrite|skip|rename`, `--no-deps`, `--defaults`.
+- parent and next styles;
+- gradients, hatches, markers (arrowheads) and dash patterns;
+- fill images (embedded pictures) and font declarations;
+- number formats and list styles;
+- page layouts and master-page backgrounds.
 
-### Merging duplicate styles
+When a style already exists in the target, it is overwritten by default.
+`--on-conflict skip` keeps the target's version, and `rename` copies it under a
+new name such as `Fancy Box (1)`.
 
-```python
-from lostyle import replace_style
+The target's automatic styles are never overwritten. `--no-deps` copies only the
+selected styles, and `--defaults` also copies default styles. Copying the same
+styles again changes nothing.
 
-replace_style("drawing.odg", ["Box 2", "Box copy"], "Box")
+### rename
+
+```
+lostyle rename drawing.odg "Fancy Box" "Corporate Box"
 ```
 
-Everything that used `Box 2` or `Box copy` (shapes, paragraphs, cells, child
-styles, master pages) now uses `Box`, and the duplicates are deleted
-(`keep=True` keeps them). If a replaced style is an ancestor of the
-replacement, the inheritance chain is re-linked so no style inherits from
-itself. Fonts can be replaced too (`replace_style(doc, "Arial", "Liberation Sans")`).
-Replacing an Impress master page also switches its `<master>-*` presentation
-styles to the replacement master's ones.
+Every reference to the style is updated: parent and next styles, master pages,
+and the shapes, paragraphs and cells in the document. If another style already
+has the new name, nothing is changed.
 
-### Keeping many documents in line with a template
+Renaming an Impress master page also renames its `<master>-title`,
+`<master>-outline1`, … presentation styles, which LibreOffice links to the master
+page by name.
+
+### replace: merging duplicate styles
+
+```
+lostyle replace drawing.odg "Box 2" "Box copy" --with Box
+```
+
+Everything that used `Box 2` or `Box copy` now uses `Box`: shapes, paragraphs,
+cells, child styles and master pages. The duplicates are then deleted;
+`--keep` keeps them instead.
+
+- **Inheritance.** If a replaced style is an ancestor of the replacement, the
+  inheritance chain is re-linked so that no style inherits from itself.
+- **Fonts.** Fonts can be replaced too:
+  `lostyle replace doc.odg Arial --with "Liberation Sans"`.
+- **Impress master pages.** Replacing one also switches its `<master>-*`
+  presentation styles to the replacement master's ones.
+
+### diff
+
+```
+$ lostyle diff template.odg drawing.odg
+--- template.odg
++++ drawing.odg
+graphic
+  - Fancy_20_Box  (Fancy Box)
+  + Corporate_20_Box  (Corporate Box)
+1 only in template.odg, 1 only in drawing.odg, 36 in both
+```
+
+Lists, by family, the styles that exist only in A (`-`) or only in B (`+`).
+
+- Styles are matched by family and name; their contents aren't compared.
+- Automatic styles are ignored.
+- `--exit-code` exits with 1 when the documents differ.
+
+### purge
+
+```
+lostyle purge Diagrams/ --keep templates/Schematization.otg
+```
+
+Deletes the styles nothing uses, along with embedded pictures that only those
+styles used.
+
+- **What counts as used.** A style is used when the drawing, text or sheets use
+  it, or when a used master page or another used style does.
+- **Always kept.** Default styles are never deleted.
+- **`--keep TEMPLATE`.** Also keeps every style the template has, so the
+  template's palette stays available in each document.
+
+## Keeping many documents in line with a template
 
 Edit the styles in one template, then push them into every document:
 
 ```
-lostyle sync templates/Schematization.otg Diagrams/ --map styles.toml --purge --dry-run
-lostyle sync templates/Schematization.otg Diagrams/ --map styles.toml --purge
+lostyle audit templates/Schematization.otg Diagrams/ --map styles.toml
+lostyle sync  templates/Schematization.otg Diagrams/ --map styles.toml --purge --dry-run
+lostyle sync  templates/Schematization.otg Diagrams/ --map styles.toml --purge
 ```
 
-For each document of the template's type (a spreadsheet among drawings is
-skipped), `sync`:
-
-1. copies all of the template's styles over the document's;
-2. moves old style names to the template's names, as listed in the mapping file;
-3. deletes the automatic styles a replaced master page left behind, and with
-   `--purge` every unused style that is not in the template. Template styles stay,
-   even when they are unused, so they're available in the document.
-
-It saves only documents that changed. Running it again on synced documents
-changes nothing.
+### The mapping file
 
 The mapping file (TOML) records once, for all documents, the old names of each
-template style:
+template style, grouped by family:
 
 ```toml
 [graphic]
@@ -130,13 +170,20 @@ template style:
 SchematizationTemplate = ["SchematizationTemplate_2"]
 ```
 
-Each old style a document has is merged into the new one (`replace_style`). When
-the new one doesn't exist yet, the first old style is renamed instead. Old names
-a document doesn't have are ignored.
+How each entry is applied:
 
-`audit` shows what is still missing from the mapping file: the styles documents
-would still use after a sync that the template doesn't have, with how many
-documents use each. Fill in the mapping until `audit` reports nothing.
+- Each old style a document has is merged into the new one, as `replace` does.
+- When the new style doesn't exist yet, the first old style is renamed to it
+  instead.
+- Old names a document doesn't have are ignored.
+
+`lostyle map` applies a mapping file on its own.
+
+### audit
+
+Shows what the mapping file is still missing. It lists the styles documents
+would still use after a sync but that the template doesn't have, with how many
+documents use each. `-v` also lists the documents.
 
 ```
 $ lostyle audit templates/Schematization.otg Diagrams/ --map styles.toml
@@ -146,32 +193,31 @@ graphic
 2 style(s) used in 80 of 232 document(s) are not in the template
 ```
 
-The same is available from Python: `sync_documents`, `audit_documents`,
-`load_mapping` / `apply_mapping`, `purge_unused` / `unused_styles` and
-`style_usage`.
+Add these names to the mapping file, or the styles to the template, until
+`audit` reports nothing. Nothing is saved.
 
-A style counts as used when the drawing, text or sheets use it, or a used master
-page or another used style does. `list --usage` shows the number of references
-each style has, and `list --unused` shows what `purge` would delete.
+### sync
 
-### Comparing styles
+For each document of the template's type, `sync`:
 
-`lostyle diff A B` lists, grouped by family/kind, the styles that exist only in
-A (`-`) or only in B (`+`), and counts those in both. Styles are matched by kind
-and internal name; their contents are not compared, and automatic styles are
-ignored. With `--exit-code` it exits with 1 when the documents differ.
+1. copies all of the template's styles over the document's;
+2. moves old style names to the template's names, as listed in the mapping file;
+3. cleans up: it deletes the automatic styles a replaced master page left behind,
+   and with `--purge` also every unused style that isn't in the template.
+   Template styles stay even when unused.
 
-```
---- template.odg
-+++ drawing.odg
-graphic
-  - Fancy_20_Box  (Fancy Box)
-  + Corporate_20_Box  (Corporate Box)
-1 only in template.odg, 1 only in drawing.odg, 36 in both
-```
+How it behaves:
 
-Note: LibreOffice stores styles under an encoded form of their display name
-(`Fancy Box` → `Fancy_20_Box`); both forms are accepted.
+- **Other document types are skipped.** For example, a spreadsheet among
+  drawings is left alone.
+- **Only changed documents are saved.** Running `sync` again on synced documents
+  changes nothing.
+- **`--dry-run`** reports what would change without saving anything.
+- **`-v`** shows the mapped and deleted styles.
+
+Note that master pages are copied as well, page size included. A document whose
+master page has the same name as the template's, but a different page size, gets
+the template's page size.
 
 ## Development
 
