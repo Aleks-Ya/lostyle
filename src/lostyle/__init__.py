@@ -1,6 +1,6 @@
 """Copy styles between LibreOffice / OpenDocument files."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0.dev0"
 
 from .collect import MissingRef, StyleEntry, StyleIndex, list_styles
 from .copier import CopyReport, OnConflict, StyleNotFoundError, copy_all_styles, copy_styles
