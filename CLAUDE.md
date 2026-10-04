@@ -13,6 +13,8 @@ uv run mypy                               # strict, src/ only
 uv run lostyle --help                     # CLI (list / copy / rename / replace / diff / map / purge / audit / sync)
 ```
 
+Releases (bump-my-version, GitHub release → PyPI Trusted Publishing) are described in `README-DEV.md`; the version lives in `__version__` in `src/lostyle/__init__.py`.
+
 `tests/test_libreoffice.py` runs real LibreOffice (`soffice --headless --convert-to`) with an isolated profile and is skipped when `soffice` is absent. Tests import helpers as top-level modules (`from helpers import make_odf`), relying on pytest's default rootdir/prepend import mode — there is no `conftest.py` or `tests/__init__.py`.
 
 ## Python API

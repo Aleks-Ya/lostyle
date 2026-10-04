@@ -7,6 +7,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from . import __version__
 from .collect import list_styles
 from .copier import StyleNotFoundError, copy_styles
 from .diff import diff_styles
@@ -148,6 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lostyle", description="Copy styles between LibreOffice/OpenDocument files."
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_list = sub.add_parser("list", help="list the styles of a document")

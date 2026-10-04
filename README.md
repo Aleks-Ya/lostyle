@@ -18,9 +18,12 @@ What it does:
 ## Installation
 
 ```
-uv tool install .        # or: pip install .
+pip install lostyle          # or: uv tool install lostyle
 lostyle --help
+uvx lostyle --help           # run once, without installing
 ```
+
+From a source checkout: `uv tool install .` (or `pip install .`).
 
 ## Commands
 

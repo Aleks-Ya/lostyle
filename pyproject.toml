@@ -1,22 +1,49 @@
 [project]
 name = "lostyle"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Copy styles between LibreOffice / OpenDocument files (Draw, Writer, Calc, Impress)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Aleksey Yablokov", email = "alex_ya@mailbox.org" }]
+keywords = ["libreoffice", "opendocument", "odf", "styles", "odg", "odt", "ods", "odp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business",
+    "Topic :: Text Processing :: Markup :: XML",
+]
 dependencies = ["lxml>=5.0", "tomli>=1.1; python_version < '3.11'"]
+
+[project.urls]
+Homepage = "https://github.com/Aleks-Ya/lostyle"
+Repository = "https://github.com/Aleks-Ya/lostyle"
+Issues = "https://github.com/Aleks-Ya/lostyle/issues"
 
 [project.scripts]
 lostyle = "lostyle.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "lxml-stubs>=0.5"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "lxml-stubs>=0.5", "bump-my-version"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/lostyle/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+exclude = [".github", ".bumpversion.toml", "CLAUDE.md", "uv.lock"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lostyle"]

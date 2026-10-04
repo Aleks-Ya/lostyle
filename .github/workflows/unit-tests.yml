@@ -1,0 +1,28 @@
+name: Unit-tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6 # https://github.com/actions/checkout/tags
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7 # https://github.com/astral-sh/setup-uv/tags
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Ruff
+        run: uv run ruff check . && uv run ruff format --check src tests
+      - name: Mypy
+        run: uv run mypy
+      - name: PyTest
+        run: uv run pytest -v
