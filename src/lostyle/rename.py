@@ -122,6 +122,30 @@ def _matching_refs(
         yield from scan(body, resolve_content, True)
 
 
+def _find_one(index: StyleIndex, name: str, family: str | None) -> StyleRef:
+    """Find exactly one non-automatic style by name, or raise."""
+    found = index.find(name, [family] if family else None)
+    if not found:
+        where = f" in family {family!r}" if family else ""
+        raise StyleNotFoundError(f"style {name!r} not found{where}")
+    if len(found) > 1:
+        kinds = ", ".join(sorted(r.kind for r in found))
+        raise AmbiguousStyleError(
+            f"style {name!r} exists in several families ({kinds}); give a family"
+        )
+    return found[0]
+
+
+def _linked_presentation_styles(index: StyleIndex, master: StyleRef) -> list[tuple[StyleRef, str]]:
+    """Presentation styles Impress links to ``master`` by name prefix, with their suffix."""
+    prefix = f"{master.name}-"
+    return [
+        (entry.ref, entry.ref.name[len(prefix) :])
+        for entry in index.styles(["presentation"])
+        if entry.ref.name.startswith(prefix)
+    ]
+
+
 def rename_style(
     document: Source,
     old: str,
@@ -146,28 +170,19 @@ def rename_style(
         StyleNotFoundError: ``old`` does not exist.
         AmbiguousStyleError: ``old`` exists in several families and ``family`` is not given.
         StyleNameConflictError: another style of the same kind already uses ``new``.
+        ValueError: ``new`` is empty, or the style cannot be renamed (default styles,
+            font declarations).
 
     Renaming an Impress master page also renames its presentation styles
     (``<master>-title``, ``<master>-outline1``, ...), which LibreOffice links to
     the master page by name; they are listed in ``RenameResult.linked``.
-        ValueError: ``new`` is empty, or the style cannot be renamed (default styles,
-            font declarations).
     """
     if not new.strip():
         raise ValueError("new style name must not be empty")
     pkg = _as_package(document)
     index = StyleIndex(pkg)
 
-    found = index.find(old, [family] if family else None)
-    if not found:
-        where = f" in family {family!r}" if family else ""
-        raise StyleNotFoundError(f"style {old!r} not found{where}")
-    if len(found) > 1:
-        kinds = ", ".join(sorted(r.kind for r in found))
-        raise AmbiguousStyleError(
-            f"style {old!r} exists in several families ({kinds}); give a family"
-        )
-    ref = found[0]
+    ref = _find_one(index, old, family)
     if ref.kind in _NOT_RENAMEABLE:
         raise ValueError(f"{ref.kind} styles cannot be renamed")
 
@@ -177,12 +192,9 @@ def rename_style(
         # Impress links presentation styles to their master page by name prefix
         # ("Default-title", "Default-outline1", ...); LibreOffice replaces them with
         # fresh defaults if they don't follow the master page's name.
-        prefix = f"{ref.name}-"
-        for entry in index.styles(["presentation"]):
-            if entry.ref.name.startswith(prefix):
-                suffix = entry.ref.name[len(prefix) :]
-                display = f"{new}-{decode_style_name(suffix)}"
-                renames.append((entry.ref, f"{new_name}-{suffix}", display))
+        for linked, suffix in _linked_presentation_styles(index, ref):
+            display = f"{new}-{decode_style_name(suffix)}"
+            renames.append((linked, f"{new_name}-{suffix}", display))
 
     renamed = {r for r, _, _ in renames}
     for r, name, display in renames:

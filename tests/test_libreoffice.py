@@ -11,7 +11,7 @@ import pytest
 from helpers import make_odf
 from test_copier import SRC_AUTO, SRC_FONTS, SRC_MASTERS, SRC_STYLES, attr, find, one, styles_root
 
-from lostyle import OdfPackage, StyleRef, copy_styles, rename_style
+from lostyle import OdfPackage, StyleRef, copy_styles, rename_style, replace_style
 from lostyle.ns import NS, encode_style_name
 
 SOFFICE = shutil.which("soffice") or shutil.which("libreoffice")
@@ -192,3 +192,48 @@ def test_rename_impress_master_page(tmp_path: Path, convert) -> None:  # type: i
         root, "//style:style[@style:name='Corporate_20_Master-title']/style:text-properties"
     )
     assert attr(props, "fo:font-size") == "77pt"
+
+
+def test_replace_roundtrip(tmp_path: Path, convert) -> None:  # type: ignore[no-untyped-def]
+    flat_dir = tmp_path / "flat"
+    flat_dir.mkdir()
+    styles = """
+<style:style style:name="standard" style:family="graphic"/>
+<style:style style:name="Box" style:family="graphic" style:parent-style-name="standard">
+  <style:graphic-properties draw:fill="solid" draw:fill-color="#ff0000"/></style:style>
+<style:style style:name="Box_20_2" style:display-name="Box 2" style:family="graphic" style:parent-style-name="standard">
+  <style:graphic-properties draw:fill="solid" draw:fill-color="#ff0000"/></style:style>
+"""
+    shape = (
+        '<draw:custom-shape draw:style-name="{}" svg:width="2cm" svg:height="2cm" svg:x="{}cm" '
+        'svg:y="1cm"><draw:enhanced-geometry draw:type="rectangle"/></draw:custom-shape>'
+    )
+    body = (
+        '<office:drawing><draw:page draw:name="p1" draw:master-page-name="M">'
+        + shape.format("Box", 1)
+        + shape.format("Box_20_2", 5)
+        + "</draw:page></office:drawing>"
+    )
+    flat = make_odf(
+        flat_dir / "doc.fodg", styles=styles, body=body, flat=True,
+        auto_styles='<style:page-layout style:name="PM0"/>',
+        masters='<style:master-page style:name="M" style:page-layout-name="PM0"/>',
+    )  # fmt: skip
+    doc = convert(flat, "odg", tmp_path)
+
+    result = replace_style(doc, "Box 2", "Box")
+    assert result.references >= 1
+
+    check_dir = tmp_path / "check"
+    check_dir.mkdir()
+    root = styles_root(convert(doc, "fodg", check_dir))
+    names = {attr(e, "style:name") for e in find(root, "//office:styles/style:style")}
+    assert "Box" in names
+    assert "Box_20_2" not in names
+    shapes = find(root, "//draw:page/draw:custom-shape")
+    assert len(shapes) == 2
+    for s in shapes:
+        style = attr(s, "draw:style-name")
+        if style != "Box":  # LO keeps per-shape formatting in an automatic style
+            auto = one(root, f"//office:automatic-styles/style:style[@style:name='{style}']")
+            assert attr(auto, "style:parent-style-name") == "Box"

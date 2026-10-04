@@ -11,6 +11,7 @@ from .copier import StyleNotFoundError, copy_styles
 from .diff import diff_styles
 from .package import OdfError, OdfPackage
 from .rename import AmbiguousStyleError, rename_style
+from .replace import replace_style
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
@@ -40,6 +41,19 @@ def _cmd_copy(args: argparse.Namespace) -> int:
 
 def _cmd_rename(args: argparse.Namespace) -> int:
     result = rename_style(args.document, args.old, args.new, family=args.family, output=args.output)
+    print(result)
+    return 0
+
+
+def _cmd_replace(args: argparse.Namespace) -> int:
+    result = replace_style(
+        args.document,
+        args.old,
+        args.replacement,
+        family=args.family,
+        keep=args.keep,
+        output=args.output,
+    )
     print(result)
     return 0
 
@@ -96,6 +110,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_rename.add_argument("-f", "--family", help="family/kind, if OLD exists in several")
     p_rename.add_argument("-o", "--output", help="write result here instead of modifying DOCUMENT")
     p_rename.set_defaults(func=_cmd_rename)
+
+    p_replace = sub.add_parser(
+        "replace", help="make everything use one style instead of others (merge duplicates)"
+    )
+    p_replace.add_argument("document")
+    p_replace.add_argument("old", nargs="+", help="style(s) to replace and delete")
+    p_replace.add_argument(
+        "--with", dest="replacement", required=True, help="the style to use instead"
+    )
+    p_replace.add_argument("-f", "--family", help="family/kind, if the name is ambiguous")
+    p_replace.add_argument("--keep", action="store_true", help="keep the replaced styles")
+    p_replace.add_argument("-o", "--output", help="write result here instead of modifying DOCUMENT")
+    p_replace.set_defaults(func=_cmd_replace)
 
     p_diff = sub.add_parser("diff", help="compare the style names of two documents")
     p_diff.add_argument("a")

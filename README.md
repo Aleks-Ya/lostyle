@@ -65,11 +65,28 @@ lostyle list template.odg -f graphic
 lostyle copy template.odg drawing.odg -s "Fancy Box"
 lostyle copy template.odg drawing.odg -f master-page --on-conflict rename -o out.odg
 lostyle rename drawing.odg "Fancy Box" "Corporate Box" [-f graphic] [-o out.odg]
+lostyle replace drawing.odg "Box 2" "Box copy" --with Box [--keep] [-o out.odg]
 lostyle diff template.odg drawing.odg [-f graphic] [--exit-code]
 ```
 
 Options of `copy`: `-f/--family` and `-s/--style` (repeatable), `-o/--output`,
 `--on-conflict overwrite|skip|rename`, `--no-deps`, `--defaults`.
+
+### Merging duplicate styles
+
+```python
+from lostyle import replace_style
+
+replace_style("drawing.odg", ["Box 2", "Box copy"], "Box")
+```
+
+Everything that used `Box 2` or `Box copy` (shapes, paragraphs, cells, child
+styles, master pages) now uses `Box`, and the duplicates are deleted
+(`keep=True` keeps them). If a replaced style is an ancestor of the
+replacement, the inheritance chain is re-linked so no style inherits from
+itself. Fonts can be replaced too (`replace_style(doc, "Arial", "Liberation Sans")`).
+Replacing an Impress master page also switches its `<master>-*` presentation
+styles to the replacement master's ones.
 
 ### Comparing styles
 

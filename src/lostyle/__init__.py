@@ -6,6 +6,7 @@ from .diff import StyleDiff, diff_styles
 from .package import OdfError, OdfPackage
 from .refs import StyleRef
 from .rename import AmbiguousStyleError, RenameResult, StyleNameConflictError, rename_style
+from .replace import ReplaceResult, replace_style
 
 __all__ = [
     "AmbiguousStyleError",
@@ -15,6 +16,7 @@ __all__ = [
     "OdfPackage",
     "OnConflict",
     "RenameResult",
+    "ReplaceResult",
     "StyleDiff",
     "StyleEntry",
     "StyleIndex",
@@ -26,4 +28,5 @@ __all__ = [
     "diff_styles",
     "list_styles",
     "rename_style",
+    "replace_style",
 ]
