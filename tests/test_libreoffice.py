@@ -1,16 +1,18 @@
-"""Round-trip results through a real LibreOffice to check that it accepts the copied styles."""
+"""Round-trip results through a real LibreOffice to check that it accepts our changes."""
 
 from __future__ import annotations
 
 import shutil
 import subprocess
+from html import escape
 from pathlib import Path
 
 import pytest
 from helpers import make_odf
-from test_copier import SRC_AUTO, SRC_FONTS, SRC_MASTERS, SRC_STYLES, attr, one, styles_root
+from test_copier import SRC_AUTO, SRC_FONTS, SRC_MASTERS, SRC_STYLES, attr, find, one, styles_root
 
-from lostyle import copy_styles
+from lostyle import OdfPackage, StyleRef, copy_styles, rename_style
+from lostyle.ns import NS, encode_style_name
 
 SOFFICE = shutil.which("soffice") or shutil.which("libreoffice")
 pytestmark = pytest.mark.skipif(SOFFICE is None, reason="LibreOffice not installed")
@@ -106,3 +108,87 @@ def test_draw_master_page_roundtrip(tmp_path: Path, convert) -> None:  # type: i
     page_style = one(root, f"//style:style[@style:name='{attr(master, 'draw:style-name')}']")
     props = one(page_style, "style:drawing-page-properties")
     assert attr(props, "draw:fill") == "gradient"
+
+
+def test_rename_roundtrip(tmp_path: Path, convert) -> None:  # type: ignore[no-untyped-def]
+    flat_dir = tmp_path / "flat"
+    flat_dir.mkdir()
+    body = (
+        '<office:drawing><draw:page draw:name="p1" draw:master-page-name="Default">'
+        '<draw:custom-shape draw:style-name="Fancy" svg:width="2cm" svg:height="2cm" svg:x="1cm" svg:y="1cm">'
+        '<draw:enhanced-geometry draw:type="rectangle"/></draw:custom-shape>'
+        "</draw:page></office:drawing>"
+    )
+    src_flat = make_odf(
+        flat_dir / "doc.fodg", fonts=SRC_FONTS, styles=SRC_STYLES, auto_styles=SRC_AUTO,
+        masters=SRC_MASTERS, body=body, flat=True,
+    )  # fmt: skip
+    doc = convert(src_flat, "odg", tmp_path)
+
+    result = rename_style(doc, "Fancy Box", "Corporate Box")
+    assert result.references >= 2  # master-page shape style + the shape on the page
+
+    check_dir = tmp_path / "check"
+    check_dir.mkdir()
+    resaved = convert(doc, "fodg", check_dir)
+    root = styles_root(resaved)
+    style = one(root, "//office:styles/style:style[@style:name='Corporate_20_Box']")
+    assert attr(style, "style:display-name") == "Corporate Box"
+    assert not find(root, "//office:styles/style:style[@style:name='Fancy_20_Box']")
+    shape = one(root, "//draw:page//draw:custom-shape")
+    shape_style = attr(shape, "draw:style-name")
+    # LO stores the shape's own formatting in an automatic style whose parent is ours
+    if shape_style != "Corporate_20_Box":
+        auto = one(root, f"//office:automatic-styles/style:style[@style:name='{shape_style}']")
+        assert attr(auto, "style:parent-style-name") == "Corporate_20_Box"
+
+
+ENCODING_SAMPLES = ["A (b)", "1x", "a_20_b", "a_b", "x:y", "a/b", "-lead", "Ü ber", "a.b-c", "日本"]
+
+
+def test_encoding_matches_libreoffice(tmp_path: Path, convert) -> None:  # type: ignore[no-untyped-def]
+    styles = "".join(
+        f'<style:style style:name="s{i}" style:display-name="{escape(n)}" style:family="graphic"/>'
+        for i, n in enumerate(ENCODING_SAMPLES)
+    )
+    flat = make_odf(tmp_path / "enc.fodg", styles=styles, flat=True,
+                    body='<office:drawing><draw:page draw:name="p"/></office:drawing>')  # fmt: skip
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    root = styles_root(convert(flat, "fodg", out_dir))
+    lo_names = {
+        attr(e, "style:display-name") or attr(e, "style:name"): attr(e, "style:name")
+        for e in find(root, "//office:styles/style:style[@style:family='graphic']")
+    }
+    for name in ENCODING_SAMPLES:
+        assert lo_names[name] == encode_style_name(name), name
+
+
+def test_rename_impress_master_page(tmp_path: Path, convert) -> None:  # type: ignore[no-untyped-def]
+    flat = make_odf(
+        tmp_path / "pres.fodp",
+        doc_type="presentation",
+        body='<office:presentation><draw:page draw:name="p1"/></office:presentation>',
+        flat=True,
+    )
+    doc = convert(flat, "odp", tmp_path)
+    # Customise the master's title style so we can tell it apart from LO's defaults.
+    pkg = OdfPackage.open(doc)
+    title = one(pkg.styles_root, "//style:style[@style:name='Default-title']/style:text-properties")
+    title.set(f"{{{NS['fo']}}}font-size", "77pt")
+    pkg.mark_styles_modified()
+
+    result = rename_style(pkg, "Default", "Corporate Master", family="master-page", output=doc)
+    assert StyleRef("presentation", "Default-title") in result.linked
+
+    check_dir = tmp_path / "check"
+    check_dir.mkdir()
+    root = styles_root(convert(doc, "fodp", check_dir))
+    one(root, "//style:master-page[@style:name='Corporate_20_Master']")
+    pages = find(root, "//draw:page")
+    assert pages
+    assert all(attr(p, "draw:master-page-name") == "Corporate_20_Master" for p in pages)
+    props = one(
+        root, "//style:style[@style:name='Corporate_20_Master-title']/style:text-properties"
+    )
+    assert attr(props, "fo:font-size") == "77pt"

@@ -102,6 +102,10 @@ class OdfPackage:
         if not self.flat:
             self._modified.add(STYLES_XML)
 
+    def mark_content_modified(self) -> None:
+        if not self.flat and CONTENT_XML in self._entries:
+            self._modified.add(CONTENT_XML)
+
     def container(self, name: str, *, create: bool = False) -> etree._Element | None:
         """Return a top-level container (e.g. ``office:styles``) of the styles root."""
         root = self.styles_root

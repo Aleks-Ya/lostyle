@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from .collect import list_styles
 from .copier import StyleNotFoundError, copy_styles
 from .package import OdfError, OdfPackage
+from .rename import AmbiguousStyleError, rename_style
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
@@ -33,6 +34,12 @@ def _cmd_copy(args: argparse.Namespace) -> int:
         output=args.output,
     )
     print(report.summary())
+    return 0
+
+
+def _cmd_rename(args: argparse.Namespace) -> int:
+    result = rename_style(args.document, args.old, args.new, family=args.family, output=args.output)
+    print(result)
     return 0
 
 
@@ -74,6 +81,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_copy.add_argument("--defaults", action="store_true", help="also copy default styles")
     p_copy.set_defaults(func=_cmd_copy)
+
+    p_rename = sub.add_parser("rename", help="rename a style and update all references to it")
+    p_rename.add_argument("document")
+    p_rename.add_argument("old", help="current name (internal or display name)")
+    p_rename.add_argument("new", help="new display name, e.g. 'Corporate Box'")
+    p_rename.add_argument("-f", "--family", help="family/kind, if OLD exists in several")
+    p_rename.add_argument("-o", "--output", help="write result here instead of modifying DOCUMENT")
+    p_rename.set_defaults(func=_cmd_rename)
     return parser
 
 
@@ -81,7 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         result: int = args.func(args)
-    except (OdfError, StyleNotFoundError, OSError) as exc:
+    except (OdfError, StyleNotFoundError, AmbiguousStyleError, ValueError, OSError) as exc:
         print(f"lostyle: error: {exc}", file=sys.stderr)
         return 1
     return result

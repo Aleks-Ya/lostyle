@@ -46,3 +46,33 @@ _ENCODED_CHAR = re.compile(r"_([0-9a-fA-F]{2,6})_")
 def decode_style_name(name: str) -> str:
     """Decode LibreOffice's style-name escaping, e.g. ``Heading_20_1`` -> ``Heading 1``."""
     return _ENCODED_CHAR.sub(lambda m: chr(int(m.group(1), 16)), name)
+
+
+_NAME_START_RANGES = [
+    (0x41, 0x5A), (0x5F, 0x5F), (0x61, 0x7A), (0xC0, 0xD6), (0xD8, 0xF6), (0xF8, 0x2FF),
+    (0x370, 0x37D), (0x37F, 0x1FFF), (0x200C, 0x200D), (0x2070, 0x218F), (0x2C00, 0x2FEF),
+    (0x3001, 0xD7FF), (0xF900, 0xFDCF), (0xFDF0, 0xFFFD), (0x10000, 0xEFFFF),
+]  # fmt: skip
+_NAME_EXTRA_RANGES = [
+    (0x2D, 0x2E), (0x30, 0x39), (0xB7, 0xB7), (0x300, 0x36F), (0x203F, 0x2040),
+]  # fmt: skip
+
+
+def _in_ranges(code: int, ranges: list[tuple[int, int]]) -> bool:
+    return any(lo <= code <= hi for lo, hi in ranges)
+
+
+def encode_style_name(name: str) -> str:
+    """Encode a display name the way LibreOffice does, e.g. ``Heading 1`` -> ``Heading_20_1``.
+
+    Every ``_`` and ``:``, and every character that is not allowed in an XML name
+    (or not allowed as its first character) becomes ``_<hex>_``.
+    """
+    out = []
+    for i, ch in enumerate(name):
+        code = ord(ch)
+        valid = _in_ranges(code, _NAME_START_RANGES) or (
+            i > 0 and _in_ranges(code, _NAME_EXTRA_RANGES)
+        )
+        out.append(ch if valid and ch != "_" else f"_{code:02x}_")
+    return "".join(out)

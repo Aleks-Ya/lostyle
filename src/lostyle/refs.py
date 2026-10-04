@@ -124,7 +124,17 @@ _FIXED_REFS: dict[str, tuple[str, ...]] = {
     q("presentation:style-name"): ("presentation",),
     q("draw:text-style-name"): ("paragraph", "text"),
     q("text:visited-style-name"): ("text",),
+    q("draw:master-page-name"): (MASTER_PAGE,),
+    q("table:default-cell-style-name"): ("table-cell",),
+    q("text:cond-style-name"): ("paragraph",),
+    q("style:register-truth-ref-style-name"): ("paragraph",),
+    q("table:template-name"): (TABLE_TEMPLATE,),
+    q("draw:class-names"): ("graphic",),
+    q("presentation:class-names"): ("presentation",),
 }
+
+# Attributes holding a space-separated list of style names.
+_LIST_ATTRS = {q("draw:class-names"), q("presentation:class-names")}
 
 _TEXT_STYLE_BY_TAG: dict[str, tuple[str, ...]] = {
     q("text:p"): ("paragraph",),
@@ -169,6 +179,16 @@ class Reference:
     attr: str
     value: str
     kinds: tuple[str, ...]
+    index: int | None = None  # position within a space-separated list attribute
+
+    def replace(self, new: str) -> None:
+        """Point this reference at the style named ``new``."""
+        if self.index is None:
+            self.node.set(self.attr, new)
+            return
+        names = (self.node.get(self.attr) or "").split()
+        names[self.index] = new
+        self.node.set(self.attr, " ".join(names))
 
 
 def iter_refs(el: etree._Element, root_kind: str) -> Iterator[Reference]:
@@ -184,7 +204,11 @@ def iter_refs(el: etree._Element, root_kind: str) -> Iterator[Reference]:
             kinds = tuple(root_kind if k == SAME else k for k in kinds)
             if DEFAULT in kinds:
                 continue
-            yield Reference(node, attr, value, kinds)
+            if attr in _LIST_ATTRS:
+                for i, name in enumerate(value.split()):
+                    yield Reference(node, attr, name, kinds, i)
+            else:
+                yield Reference(node, attr, value, kinds)
 
 
 def iter_file_refs(el: etree._Element) -> Iterator[tuple[etree._Element, str]]:

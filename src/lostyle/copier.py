@@ -212,7 +212,7 @@ class _Copier:
         for r in iter_refs(el, ref.kind):
             target = self.src_index.resolve(r.kinds, r.value, prefer_auto)
             if target is not None and self.final_names.get(target, r.value) != r.value:
-                r.node.set(r.attr, self.final_names[target])
+                r.replace(self.final_names[target])
 
     def _copy_files(self, el: etree._Element) -> None:
         for node, path in iter_file_refs(el):

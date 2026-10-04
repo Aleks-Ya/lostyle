@@ -35,6 +35,24 @@ for entry in list_styles(OdfPackage.open("template.odg"), ["graphic"]):
     print(entry.ref.name, entry.display_name)
 ```
 
+### Renaming a style
+
+```python
+from lostyle import rename_style
+
+result = rename_style("drawing.odg", "Fancy Box", "Corporate Box")
+print(result)  # graphic:Fancy_20_Box -> Corporate_20_Box (Corporate Box), 3 reference(s) updated
+```
+
+Every reference is updated: parent/next styles, master pages, and shapes,
+paragraphs and cells in the document body. The new name is stored the way
+LibreOffice stores it (display name `Corporate Box`, internal name
+`Corporate_20_Box`). Pass `family=` when the name exists in several families.
+If another style already uses the new name, `StyleNameConflictError` is raised
+and nothing is changed. Renaming an Impress master page also renames its
+`<master>-title`, `<master>-outline1`, … presentation styles, which LibreOffice
+links to the master page by name.
+
 Families/kinds: `graphic`, `paragraph`, `text`, `list`, `table`, `table-cell`,
 `table-column`, `table-row`, `drawing-page`, `presentation`, `number`,
 `master-page`, `page-layout`, `gradient`, `hatch`, `marker`, `stroke-dash`,
@@ -46,6 +64,7 @@ Families/kinds: `graphic`, `paragraph`, `text`, `list`, `table`, `table-cell`,
 lostyle list template.odg -f graphic
 lostyle copy template.odg drawing.odg -s "Fancy Box"
 lostyle copy template.odg drawing.odg -f master-page --on-conflict rename -o out.odg
+lostyle rename drawing.odg "Fancy Box" "Corporate Box" [-f graphic] [-o out.odg]
 ```
 
 Options of `copy`: `-f/--family` and `-s/--style` (repeatable), `-o/--output`,
